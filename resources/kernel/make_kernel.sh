@@ -107,24 +107,18 @@ make_initramfs() {
 }
 
 # Usage: validate_kernel_format format
-# Prints the lowercase format name, if one of "elf" or "bzimage"
-# for x86 or "pe" for aarch64.
+# Prints the lowercase format name, if one of "elf", "bzimage" or "pe".
 # Exits with error if any other format is specified.
 validate_kernel_format() {
     format="$1"
     arch=$(uname -m)
 
     kernel_fmt=$(echo "$format" | tr '[:upper:]' '[:lower:]')
-    if [ $arch = "x86_64" ]; then
-        if [ "$kernel_fmt" != "elf" ] && [ "$kernel_fmt" != "bzimage" ]; then
-            die "Invalid kernel binary format: $kernel_fmt for this type of architecture."
-        fi
-    elif [ $arch = "aarch64" ]; then
-        if [ "$kernel_fmt" != "pe" ]; then
-            die "Invalid kernel binary format: $kernel_fmt for this type of architecture."
-        fi
-    else
-        die "Unsupported architecture!"
+    valid_formats=("elf", "bzimage", "pe")
+    if [ "$kernel_fmt" != "elf" ] && \
+      [ "$kernel_fmt" != "bzimage" ] && \
+      [ "$kernel_fmt" != "pe" ]; then
+        die "Invalid kernel binary format: $kernel_fmt."
     fi
     echo "$kernel_fmt"
 }
@@ -148,23 +142,14 @@ kernel_target() {
 # Prints the name of the generated kernel binary.
 kernel_binary() {
     format=$(validate_kernel_format "$1")
-    arch=$(uname -m)
 
-    if [ $arch = "x86_64" ]; then
-        case "$format" in
-        elf)        echo "vmlinux"
-                    ;;
-        bzimage)    echo "arch/x86/boot/bzImage"
-                    ;;
-        esac
-    elif [ $arch = "aarch64" ]; then
-        case "$format" in
-            pe)        echo "arch/arm64/boot/Image"
-                        ;;
-        esac
-    else
-        die "Unsupported architecture!"
-    fi
+    case "$format" in
+    elf)        echo "vmlinux"
+                ;;
+    bzimage)    echo "arch/x86/boot/bzImage"
+                ;;
+    pe)         echo "arch/arm64/boot/Image"
+    esac
 }
 
 # Usage:
