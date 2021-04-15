@@ -50,7 +50,7 @@ use devices::virtio::block::{self, BlockArgs};
 use devices::virtio::net::{self, NetArgs};
 use devices::virtio::{Env, MmioConfig};
 
-use serial::SerialWrapper;
+use device::SerialWrapper;
 #[cfg(target_arch = "x86_64")]
 use vm_vcpu::vcpu::cpuid::filter_cpuid;
 use vm_vcpu::vcpu::VcpuState;
@@ -60,11 +60,11 @@ use vm_vcpu::vm::{self, ExitHandler, KvmVm, VmState};
 use arch::{create_fdt, AARCH64_PHYS_MEM_START, AARCH64_FDT_MAX_SIZE, AARCH64_MMIO_BASE};
 
 use std::convert::TryInto;
+use crate::device::{EventFdTrigger, SerialError};
 
 mod boot;
 mod config;
-
-mod serial;
+mod device;
 
 /// First address past 32 bits is where the MMIO gap ends.
 pub(crate) const MMIO_GAP_END: u64 = 1 << 32;
@@ -109,8 +109,8 @@ pub enum Error {
     BootParam(boot::Error),
     /// Error configuring the kernel command line.
     Cmdline(cmdline::Error),
-    /// Error setting up devices.
-    Device(serial::Error),
+    /// Error setting up the serial device.
+    SerialDevice(SerialError),
     /// Event management error.
     EventManager(event_manager::Error),
     /// I/O error.
@@ -218,37 +218,6 @@ impl MutEventSubscriber for VmmExitHandler {
     fn init(&mut self, ops: &mut EventOps) {
         ops.add(Events::new(&self.exit_event, EventSet::IN))
             .expect("Cannot initialize exit handler.");
-    }
-}
-
-/// Newtype for implementing [Trigger](https://docs.rs/vm-superio/latest/vm_superio/trait.Trigger.html) trait
-struct EventFdTrigger(EventFd);
-
-impl Trigger for EventFdTrigger {
-    type E = io::Error;
-
-    fn trigger(&self) -> io::Result<()> {
-        self.0.write(1)
-    }
-}
-
-impl Deref for EventFdTrigger {
-    type Target = EventFd;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl EventFdTrigger {
-    pub fn new(flag: i32) -> io::Result<Self> {
-        let event_fd = EventFd::new(flag)?;
-        Ok(EventFdTrigger(event_fd))
-    }
-
-    pub fn try_clone(&self) -> io::Result<Self> {
-        let event_fd = (**self).try_clone()?;
-        Ok(EventFdTrigger(event_fd))
     }
 }
 

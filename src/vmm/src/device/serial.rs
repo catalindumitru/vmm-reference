@@ -15,9 +15,10 @@ use vmm_sys_util::epoll::EventSet;
 
 use utils::debug;
 use vm_device::bus::MmioAddress;
+use crate::device::EventFdTrigger;
 
 /// Newtype for implementing `event-manager` functionalities.
-pub(crate) struct SerialWrapper<T: Trigger, EV: SerialEvents, W: Write>(pub Serial<T, EV, W>);
+pub struct SerialWrapper<T: Trigger, EV: SerialEvents, W: Write>(pub Serial<T, EV, W>);
 
 impl<T: Trigger, W: Write> MutEventSubscriber for SerialWrapper<T, NoEvents, W> {
     fn process(&mut self, events: Events, ops: &mut EventOps) {
