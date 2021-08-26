@@ -4,11 +4,13 @@
 #![deny(missing_docs)]
 
 use std::convert::TryFrom;
+#[cfg(target_arch = "aarch64")]
+use std::convert::TryInto;
 #[cfg(target_arch = "x86_64")]
 use std::ffi::CString;
 use std::fs::File;
 use std::io::{self, stdin, stdout};
-use std::ops::{Deref, DerefMut};
+use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -36,11 +38,18 @@ use linux_loader::loader::{
     elf::{self, Elf},
     load_cmdline,
 };
-use vm_device::bus::{MmioAddress, MmioRange, BusManager};
-use vm_device::device_manager::{IoManager, MmioManager};
+use vm_device::bus::{MmioAddress, MmioRange};
+use vm_device::device_manager::IoManager;
+#[cfg(target_arch = "aarch64")]
+use vm_device::device_manager::MmioManager;
+#[cfg(target_arch = "x86_64")]
 use vm_device::resources::Resource;
-use vm_memory::{GuestAddress, GuestMemory, GuestMemoryMmap, GuestMemoryRegion};
-use vm_superio::{Serial, RTC, Trigger};
+#[cfg(target_arch = "aarch64")]
+use vm_memory::GuestMemoryRegion;
+use vm_memory::{GuestAddress, GuestMemory, GuestMemoryMmap};
+use vm_superio::Serial;
+#[cfg(target_arch = "aarch64")]
+use vm_superio::RTC;
 use vmm_sys_util::{epoll::EventSet, eventfd::EventFd, terminal::Terminal};
 
 #[cfg(target_arch = "x86_64")]
@@ -57,10 +66,11 @@ use vm_vcpu::vcpu::VcpuState;
 use vm_vcpu::vm::{self, ExitHandler, KvmVm, VmState};
 
 #[cfg(target_arch = "aarch64")]
-use arch::{create_fdt, AARCH64_PHYS_MEM_START, AARCH64_FDT_MAX_SIZE, AARCH64_MMIO_BASE};
+use arch::{create_fdt, AARCH64_FDT_MAX_SIZE, AARCH64_MMIO_BASE, AARCH64_PHYS_MEM_START};
 
-use std::convert::TryInto;
-use crate::device::{EventFdTrigger, SerialError, RTCWrapper};
+#[cfg(target_arch = "aarch64")]
+use crate::device::RTCWrapper;
+use crate::device::{EventFdTrigger, SerialError};
 
 mod boot;
 mod config;
@@ -73,8 +83,10 @@ pub(crate) const MMIO_GAP_SIZE: u64 = 768 << 20;
 /// The start of the MMIO gap (memory area reserved for MMIO devices).
 pub(crate) const MMIO_GAP_START: u64 = MMIO_GAP_END - MMIO_GAP_SIZE;
 /// Address of the zeropage, where Linux kernel boot parameters are written.
+#[cfg(target_arch = "x86_64")]
 const ZEROPG_START: u64 = 0x7000;
 /// Address where the kernel command line is written.
+#[cfg(target_arch = "x86_64")]
 const CMDLINE_START: u64 = 0x0002_0000;
 
 /// Default high memory start (1 MiB).
@@ -151,6 +163,7 @@ type Net = net::Net<Arc<GuestMemoryMmap>>;
 
 /// A live VMM.
 pub struct VMM {
+    #[cfg_attr(target_arch = "aarch64", allow(dead_code))]
     kvm: Kvm,
     vm: KvmVm<WrappedExitHandler>,
     kernel_cfg: KernelConfig,
@@ -165,7 +178,10 @@ pub struct VMM {
     exit_handler: WrappedExitHandler,
     block_devices: Vec<Arc<Mutex<Block>>>,
     net_devices: Vec<Arc<Mutex<Net>>>,
-    // TODO: this should not be here; hack just to make an arm poc;
+    // TODO: fetch the vcpu number from the `vm` object.
+    // TODO-continued: this is needed to make the arm POC work as we need to create the FDT
+    // TODO-continued: after the other resources are created.
+    #[cfg(target_arch = "aarch64")]
     num_vcpus: u64,
 }
 
@@ -258,6 +274,7 @@ impl TryFrom<VMMConfig> for VMM {
             exit_handler: wrapped_exit_handler,
             block_devices: Vec::new(),
             net_devices: Vec::new(),
+            #[cfg(target_arch = "aarch64")]
             num_vcpus: config.vcpu_config.num as u64,
         };
 
@@ -415,7 +432,6 @@ impl VMM {
     #[cfg(target_arch = "aarch64")]
     fn load_kernel(&mut self) -> Result<KernelLoaderResult> {
         let mut kernel_image = File::open(&self.kernel_cfg.path).map_err(Error::IO)?;
-        const AARCH64_KERNEL_OFFSET: u64 = 0x80000;
         Ok(linux_loader::loader::pe::PE::load(
             &self.guest_memory,
             Some(GuestAddress(0x8000_0000)),
@@ -438,7 +454,8 @@ impl VMM {
         // See more IRQ assignments & info: https://tldp.org/HOWTO/Serial-HOWTO-8.html
         self.vm.register_irqfd(&interrupt_evt, 4)?;
         self.kernel_cfg.cmdline.push_str(" console=ttyS0");
-        #[cfg(target_arch = "x86_64")] {
+        #[cfg(target_arch = "x86_64")]
+        {
             // Put it on the bus.
             // Safe to use expect() because the device manager is instantiated in new(), there's no
             // default implementation, and the field is private inside the VMM struct.
@@ -455,11 +472,17 @@ impl VMM {
                 .unwrap();
         }
 
-        #[cfg(target_arch = "aarch64")] {
-            self.kernel_cfg.cmdline.push_str(&format!(" earlycon=uart,mmio,0x{:08x}", AARCH64_MMIO_BASE));
+        #[cfg(target_arch = "aarch64")]
+        {
+            self.kernel_cfg
+                .cmdline
+                .push_str(&format!(" earlycon=uart,mmio,0x{:08x}", AARCH64_MMIO_BASE));
             let range = MmioRange::new(MmioAddress(AARCH64_MMIO_BASE), 0x1000).unwrap();
-            use vm_device::DeviceMmio;
-            self.device_mgr.lock().unwrap().register_mmio(range, serial.clone()).unwrap();
+            self.device_mgr
+                .lock()
+                .unwrap()
+                .register_mmio(range, serial.clone())
+                .unwrap();
         }
 
         // Hook it to event management.
@@ -472,8 +495,11 @@ impl VMM {
     fn add_rtc_device(&mut self) {
         let rtc = Arc::new(Mutex::new(RTCWrapper(RTC::new())));
         let range = MmioRange::new(MmioAddress(AARCH64_MMIO_BASE + 0x1000), 0x1000).unwrap();
-        use vm_device::DeviceMmio;
-        self.device_mgr.lock().unwrap().register_mmio(range, rtc.clone()).unwrap();
+        self.device_mgr
+            .lock()
+            .unwrap()
+            .register_mmio(range, rtc.clone())
+            .unwrap();
     }
 
     // All methods that add a virtio device use hardcoded addresses and interrupts for now, and
@@ -631,7 +657,8 @@ impl VMM {
             &self.guest_memory,
             fdt_offset,
             AARCH64_FDT_MAX_SIZE.try_into().unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
     }
 }
 
@@ -719,6 +746,7 @@ mod tests {
             exit_handler,
             block_devices: Vec::new(),
             net_devices: Vec::new(),
+            #[cfg(target_arch = "aarch64")]
             num_vcpus: vmm_config.vcpu_config.num as u64,
         }
     }

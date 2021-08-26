@@ -4,18 +4,18 @@ use std::convert::TryInto;
 use std::io::{self, stdin, Read, Write};
 
 use event_manager::{EventOps, Events, MutEventSubscriber};
+#[cfg(target_arch = "aarch64")]
+use vm_device::{bus::MmioAddress, MutDeviceMmio};
+#[cfg(target_arch = "x86_64")]
 use vm_device::{
     bus::{PioAddress, PioAddressValue},
     MutDevicePio,
-    MutDeviceMmio,
 };
 use vm_superio::serial::{NoEvents, SerialEvents};
 use vm_superio::{Serial, Trigger};
 use vmm_sys_util::epoll::EventSet;
 
 use utils::debug;
-use vm_device::bus::MmioAddress;
-use crate::device::EventFdTrigger;
 
 /// Newtype for implementing `event-manager` functionalities.
 pub struct SerialWrapper<T: Trigger, EV: SerialEvents, W: Write>(pub Serial<T, EV, W>);
@@ -54,6 +54,7 @@ impl<T: Trigger, W: Write> MutEventSubscriber for SerialWrapper<T, NoEvents, W> 
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 impl<T: Trigger<E = io::Error>, W: Write> MutDevicePio for SerialWrapper<T, NoEvents, W> {
     fn pio_read(&mut self, _base: PioAddress, offset: PioAddressValue, data: &mut [u8]) {
         // TODO: this function can't return an Err, so we'll mark error conditions
@@ -93,8 +94,9 @@ impl<T: Trigger<E = io::Error>, W: Write> MutDevicePio for SerialWrapper<T, NoEv
     }
 }
 
+#[cfg(target_arch = "aarch64")]
 impl<T: Trigger<E = io::Error>, W: Write> MutDeviceMmio for SerialWrapper<T, NoEvents, W> {
-    fn mmio_read(&mut self, base: MmioAddress, offset: u64, data: &mut [u8]) {
+    fn mmio_read(&mut self, _base: MmioAddress, offset: u64, data: &mut [u8]) {
         // TODO: this function can't return an Err, so we'll mark error conditions
         // (data being more than 1 byte, offset overflowing an u8) with logs & metrics.
         // println!("blea");
@@ -111,7 +113,7 @@ impl<T: Trigger<E = io::Error>, W: Write> MutDeviceMmio for SerialWrapper<T, NoE
         }
     }
 
-    fn mmio_write(&mut self, base: MmioAddress, offset: u64, data: &[u8]) {
+    fn mmio_write(&mut self, _base: MmioAddress, offset: u64, data: &[u8]) {
         // TODO: this function can't return an Err, so we'll mark error conditions
         // (data being more than 1 byte, offset overflowing an u8) with logs & metrics.
         if data.len() != 1 {
