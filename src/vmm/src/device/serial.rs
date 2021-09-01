@@ -149,6 +149,9 @@ mod tests {
 
     use std::io::sink;
 
+    #[cfg(target_arch = "aarch64")]
+    use vm_device::{bus::MmioAddress, MutDeviceMmio};
+    #[cfg(target_arch = "x86_64")]
     use vm_device::{bus::PioAddress, MutDevicePio};
     use vm_superio::Serial;
 
@@ -161,16 +164,24 @@ mod tests {
         // to the serial console just the first byte.
         let mut invalid_data = [0, 0];
         let valid_iir_offset = 2;
+        #[cfg(target_arch = "x86_64")]
         serial_console.pio_read(PioAddress(0), valid_iir_offset, invalid_data.as_mut());
+        #[cfg(target_arch = "aarch64")]
+        serial_console.mmio_read(MmioAddress(0), valid_iir_offset, invalid_data.as_mut());
         // Check that the emulation added a value to `invalid_data`.
         assert_ne!(invalid_data[0], 0);
 
         // The same scenario happens for writes.
+        #[cfg(target_arch = "x86_64")]
         serial_console.pio_write(PioAddress(0), valid_iir_offset, &invalid_data);
+        #[cfg(target_arch = "aarch64")]
+        serial_console.mmio_write(MmioAddress(0), valid_iir_offset, &invalid_data);
 
         // Check that passing an invalid offset does not result in a crash.
         let data = [0];
-        let invalid_offset = u16::MAX;
-        serial_console.pio_write(PioAddress(0), invalid_offset, &data);
+        #[cfg(target_arch = "x86_64")]
+        serial_console.pio_write(PioAddress(0), u16::MAX, &data);
+        #[cfg(target_arch = "aarch64")]
+        serial_console.mmio_write(MmioAddress(0), u64::MAX, &data);
     }
 }

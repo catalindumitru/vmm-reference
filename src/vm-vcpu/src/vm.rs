@@ -406,7 +406,9 @@ impl<EH: 'static + ExitHandler + Send> KvmVm<EH> {
 mod tests {
     use super::*;
 
+    #[cfg(target_arch = "x86_64")]
     use crate::vcpu::cpuid::filter_cpuid;
+    #[cfg(target_arch = "x86_64")]
     use crate::vcpu::mptable::MAX_SUPPORTED_CPUS;
     use crate::vm::{Error, KvmVm, VmState};
 
@@ -458,15 +460,27 @@ mod tests {
         let mut vm = default_vm(&kvm, guest_memory, num_vcpus).unwrap();
         let io_manager = Arc::new(Mutex::new(IoManager::new()));
 
+        #[cfg(target_arch = "x86_64")]
         let base_cpuid = kvm
             .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)
             .unwrap();
-        for i in 0..vm.state.num_vcpus {
+
+        let mut vcpu_states = Vec::new();
+        for index in 0..num_vcpus {
+            // Set CPUID.
+            #[cfg(target_arch = "x86_64")]
             let mut cpuid = base_cpuid.clone();
-            filter_cpuid(&kvm, i as usize, vm.state.num_vcpus as usize, &mut cpuid);
-            vm.create_vcpu(io_manager.clone(), VcpuState { cpuid, id: i }, guest_memory)
-                .unwrap();
+            #[cfg(target_arch = "x86_64")]
+            filter_cpuid(&kvm, index as usize, vcpu_cfg.num as usize, &mut cpuid);
+
+            #[cfg(target_arch = "x86_64")]
+            let vcpu_state = VcpuState { cpuid, id: index };
+            #[cfg(target_arch = "aarch64")]
+            let vcpu_state = VcpuState { id: index };
+            vcpu_states.push(vcpu_state);
         }
+        vm.create_vcpus(io_manager.clone(), vcpu_states, guest_memory)
+            .unwrap();
 
         assert_eq!(vm.vcpus.len() as u8, num_vcpus);
         assert_eq!(vm.vcpu_handles.len() as u8, 0);
@@ -479,6 +493,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_arch = "x86_64")]
     fn test_failed_setup_mptable() {
         let num_vcpus = (MAX_SUPPORTED_CPUS + 1) as u8;
         let kvm = Kvm::new().unwrap();

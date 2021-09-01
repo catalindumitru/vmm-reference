@@ -664,15 +664,21 @@ impl VMM {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_arch = "x86_64")]
     use std::io::ErrorKind;
-    use std::mem;
     use std::path::PathBuf;
 
+    #[cfg(target_arch = "x86_64")]
     use linux_loader::elf::Elf64_Ehdr;
+    #[cfg(target_arch = "x86_64")]
     use linux_loader::loader::{self, bootparam::setup_header, elf::PvhBootCapability};
-    use vm_memory::bytes::{ByteValued, Bytes};
-    use vm_memory::{Address, GuestAddress, GuestMemory};
-    use vmm_sys_util::{tempdir::TempDir, tempfile::TempFile};
+    #[cfg(target_arch = "x86_64")]
+    use vm_memory::{
+        bytes::{ByteValued, Bytes},
+        Address, GuestAddress, GuestMemory,
+    };
+    #[cfg(target_arch = "x86_64")]
+    use vmm_sys_util::{tempfile::TempFile, tempdir::TempDir};
 
     use super::*;
     use utils::resource_download::s3_download;
@@ -680,6 +686,7 @@ mod tests {
     const MEM_SIZE_MIB: u32 = 1024;
     const NUM_VCPUS: u8 = 1;
 
+    #[cfg(target_arch = "x86_64")]
     fn default_bzimage_path() -> PathBuf {
         let tags = r#"
         {
@@ -752,16 +759,18 @@ mod tests {
     }
 
     // Return the address where an ELF file should be loaded, as specified in its header.
+    #[cfg(target_arch = "x86_64")]
     fn elf_load_addr(elf_path: &PathBuf) -> GuestAddress {
         let mut elf_file = File::open(elf_path).unwrap();
         let mut ehdr = Elf64_Ehdr::default();
         ehdr.as_bytes()
-            .read_from(0, &mut elf_file, mem::size_of::<Elf64_Ehdr>())
+            .read_from(0, &mut elf_file, std::mem::size_of::<Elf64_Ehdr>())
             .unwrap();
         GuestAddress(ehdr.e_entry)
     }
 
     #[test]
+    #[cfg(target_arch = "x86_64")]
     fn test_compute_kernel_load_addr() {
         let vmm_config = default_vmm_config();
         let vmm = mock_vmm(vmm_config);
@@ -806,6 +815,9 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_arch = "x86_64")]
+    // FIXME: We need a similar test for aarch64. Right now we do not have an image that just
+    // FIXME-continued: boots and exits, so we cannot build an equivalent test.
     fn test_load_kernel() {
         // Test Case: load a valid elf.
         let mut vmm_config = default_vmm_config();
@@ -866,11 +878,19 @@ mod tests {
         let mut vmm = mock_vmm(vmm_config);
         assert_eq!(vmm.kernel_cfg.cmdline.as_str(), DEFAULT_KERNEL_CMDLINE);
 
+        #[cfg(target_arch = "aarch64")]
+        // on aarch64 we need to create the vcpus before we are able to register irqs.
+        vmm.create_vcpus(&VcpuConfig { num: 1 }).unwrap();
+
         vmm.add_serial_console().unwrap();
-        assert!(vmm.kernel_cfg.cmdline.as_str().contains("console=ttyS0"))
+        #[cfg(target_arch = "x86_64")]
+        assert!(vmm.kernel_cfg.cmdline.as_str().contains("console=ttyS0"));
+        #[cfg(target_arch = "aarch64")]
+        assert!(vmm.kernel_cfg.cmdline.as_str().contains("earlycon=uart,mmio"));
     }
 
     #[test]
+    #[cfg(target_arch = "x86_64")]
     fn test_create_guest_memory() {
         // Guest memory ends exactly at the MMIO gap: should succeed (last addressable value is
         // MMIO_GAP_START - 1). There should be 1 memory region.
@@ -922,6 +942,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_arch = "x86_64")]
+    // FIXME: We cannot run this on aarch64 because we do not have an image that just runs and
+    // FIXME-continued: halts afterwards. Once we have this, we need to update `default_vmm_config`
+    // FIXME-continued: and have a default PE image on aarch64.
     fn test_create_vcpus() {
         // The scopes force the created vCPUs to unmap their kernel memory at the end.
         {
@@ -947,6 +971,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_arch = "x86_64")]
+    // FIXME: We cannot run this on aarch64 because we do not have an image that just runs and
+    // FIXME-continued: halts afterwards. Once we have this, we need to update `default_vmm_config`
+    // FIXME-continued: and have a default PE image on aarch64.
     fn test_add_block() {
         let vmm_config = default_vmm_config();
         let mut vmm = mock_vmm(vmm_config);
@@ -982,6 +1010,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_arch = "x86_64")]
+    // FIXME: We cannot run this on aarch64 because we do not have an image that just runs and
+    // FIXME-continued: halts afterwards. Once we have this, we need to update `default_vmm_config`
+    // FIXME-continued: and have a default PE image on aarch64.
     fn test_add_net() {
         let vmm_config = default_vmm_config();
         let mut vmm = mock_vmm(vmm_config);
