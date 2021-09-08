@@ -162,7 +162,7 @@ type Block = block::Block<Arc<GuestMemoryMmap>>;
 type Net = net::Net<Arc<GuestMemoryMmap>>;
 
 /// A live VMM.
-pub struct VMM {
+pub struct Vmm {
     #[cfg_attr(target_arch = "aarch64", allow(dead_code))]
     kvm: Kvm,
     vm: KvmVm<WrappedExitHandler>,
@@ -237,7 +237,7 @@ impl MutEventSubscriber for VmmExitHandler {
     }
 }
 
-impl TryFrom<VMMConfig> for VMM {
+impl TryFrom<VMMConfig> for Vmm {
     type Error = Error;
 
     fn try_from(config: VMMConfig) -> Result<Self> {
@@ -342,7 +342,7 @@ impl Vmm {
     // Create guest memory regions.
     fn create_guest_memory(memory_config: &MemoryConfig) -> Result<GuestMemoryMmap> {
         let mem_size = ((memory_config.size_mib as u64) << 20) as usize;
-        let mem_regions = VMM::create_memory_regions(mem_size);
+        let mem_regions = Vmm::create_memory_regions(mem_size);
 
         // Create guest memory from regions.
         GuestMemoryMmap::from_ranges(&mem_regions)

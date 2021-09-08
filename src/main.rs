@@ -3,11 +3,11 @@
 use std::convert::TryFrom;
 use std::env;
 
-use api::CLI;
-use vmm::VMM;
+use api::Cli;
+use vmm::Vmm;
 
 fn main() {
-    match CLI::launch(
+    match Cli::launch(
         env::args()
             .collect::<Vec<String>>()
             .iter()
@@ -16,7 +16,7 @@ fn main() {
     ) {
         Ok(vmm_config) => {
             let mut vmm =
-                VMM::try_from(vmm_config).expect("Failed to create VMM from configurations");
+                Vmm::try_from(vmm_config).expect("Failed to create VMM from configurations");
             // For now we are just unwrapping here, in the future we might use a nicer way of
             // handling errors such as pretty printing them.
             vmm.run().unwrap();
