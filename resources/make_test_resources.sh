@@ -30,5 +30,5 @@ if [[ $arch == x86_64* ]]; then
   ./kernel/make_kernel_image_deb.sh -f bzimage -k bzimage-focal -w $DEB_DIR -j 2 -h
   ./disk/make_rootfs.sh -d /tmp/ubuntu-focal/linux-5.4.81/deb/ -w $DISK_DIR -o rootfs.ext4
 elif [[ $arch == aarch64* ]]; then
-  ./kernel/make_kernel_busybox_image.sh -f pe -k pe-hello-busybox -w $KERNEL_DIR -j 2
+  ./kernel/make_kernel_busybox_image.sh -f pe -k pe-hello-busybox -w $KERNEL_DIR -j 10 -h
 fi
